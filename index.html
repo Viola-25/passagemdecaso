@@ -138,7 +138,7 @@
         });
         
         async function callGeminiAPI(text) {
-            const apiKey = ""; // API Key will be handled by the environment
+            const apiKey = "AIzaSyCKdCSj9qw97my2iw7lkscZaXv86EuMBys"; // API Key will be handled by the environment
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
             const systemPrompt = `Você é um assistente de saúde especialista em processar e organizar informações clínicas. Sua tarefa é extrair e estruturar dados de uma nota de evolução de paciente em um formato de passagem de caso padronizado, garantindo que NENHUMA informação seja perdida. Responda em Markdown. A data e hora da passagem de caso deve ser a data e hora atuais. Se uma informação para um campo específico não estiver presente no texto fornecido, preencha com "[Não informado]".`;
@@ -233,15 +233,17 @@
 
         function createHtmlForDownload(markdownContent) {
             
-            let reportHtml = marked.parse(markdownContent);
+            let markedHtml = marked.parse(markdownContent);
+            
+            const headerMatch = markedHtml.match(/<h2>(.*?)<\/h2>/);
+            const headerHtml = headerMatch ? `<div class="main-header"><h2>${headerMatch[1]}</h2></div>` : '';
+            const contentHtml = markedHtml.replace(/<h2>(.*?)<\/h2>/, '');
 
-            reportHtml = reportHtml.replace(/<h2>(.*?)<\/h2>/, '<div class="main-header"><h2>$1</h2></div>');
-
-            reportHtml = reportHtml.replace(/<h3>(.*?)<\/h3>/g, (match, title) => {
+            let processedContent = contentHtml.replace(/<h3>(.*?)<\/h3>/g, (match, title) => {
                 return `<h3 class="section-title"><span>${title}</span></h3>`;
             });
 
-            reportHtml = reportHtml.replace(/<li><strong>Alergias:<\/strong>/gi, '<li class="alert-danger"><strong>Alergias:</strong>');
+            processedContent = processedContent.replace(/<li><strong>Alergias:<\/strong>/gi, '<li class="alert-danger"><strong>Alergias:</strong>');
             
             return `
                 <!DOCTYPE html>
@@ -306,9 +308,9 @@
                             font-size: 1.25rem;
                             font-weight: 600;
                             color: var(--secondary-color);
-                            margin-top: 2rem;
-                            margin-bottom: 1rem;
-                            padding-bottom: 0.5rem;
+                            margin-top: 2.5rem;
+                            margin-bottom: 1.5rem;
+                            padding-bottom: 0.75rem;
                             border-bottom: 1px solid var(--border-color);
                         }
                         
@@ -319,7 +321,7 @@
                             padding: 0;
                             display: grid;
                             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                            gap: 12px;
+                            gap: 16px;
                         }
 
                         li {
@@ -330,6 +332,7 @@
                             background-color: #f9fafb;
                             font-size: 0.95rem;
                             line-height: 1.5;
+                            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
                         }
 
                         li strong {
@@ -377,13 +380,17 @@
                             li {
                                 border-color: #ccc;
                                 margin-bottom: 8px;
+                                box-shadow: none;
                             }
                         }
                     </style>
                 </head>
                 <body>
                     <div class="container">
-                        ${reportHtml}
+                        ${headerHtml}
+                        <div class="content">
+                            ${processedContent}
+                        </div>
                     </div>
                 </body>
                 </html>
