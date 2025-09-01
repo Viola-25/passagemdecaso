@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Passagem de Caso</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .spinner {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Gerador de Passagem de Caso</h1>
+            <p class="text-md text-gray-600 mt-2">Cole a evolução do paciente abaixo, e a IA irá estruturar o relatório para você.</p>
+        </header>
+
+        <main class="bg-white p-6 rounded-2xl shadow-lg">
+            <div>
+                <label for="evolution-text" class="block text-lg font-semibold mb-2 text-gray-700">Evolução do Paciente:</label>
+                <textarea id="evolution-text" rows="15" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow duration-200" placeholder="Ex: Paciente J.S., 72 anos, masculino, admitido em 15/08/2024 por quadro de dor torácica atípica. Alérgico a penicilina. HAS, DM2 e DPOC em uso de... Realizado CATE, sem lesões obstrutivas. Atualmente em ar ambiente, Glasgow 15, dieta oral bem aceita..."></textarea>
+            </div>
+
+            <div class="text-center mt-6">
+                <button id="process-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-transform transform hover:scale-105 duration-200">
+                    Processar e Gerar Relatório
+                </button>
+            </div>
+
+            <div id="result-section" class="mt-8 hidden">
+                <h2 class="text-2xl font-bold mb-4 text-gray-900 border-b pb-2">Relatório Estruturado</h2>
+                <div id="loading-indicator" class="flex justify-center items-center my-10 hidden">
+                    <div class="spinner w-12 h-12 rounded-full border-4 border-gray-200"></div>
+                    <p class="ml-4 text-gray-600">Processando informações... Isso pode levar um momento.</p>
+                </div>
+                <div id="report-output" class="prose max-w-none prose-h2:text-xl prose-h3:text-lg prose-strong:font-semibold">
+                    <!-- O relatório gerado aparecerá aqui -->
+                </div>
+                 <div id="error-message" class="hidden my-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                    <!-- Mensagem de erro aparecerá aqui -->
+                </div>
+                <div id="download-section" class="text-center mt-8 hidden">
+                     <button id="download-btn" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300 transition-transform transform hover:scale-105 duration-200">
+                        Baixar Arquivo HTML
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="text-center mt-8 text-sm text-gray-500">
+            <p>&copy; 2024 Ferramenta de Apoio Clínico. Todos os dados são processados localmente e não são armazenados.</p>
+        </footer>
+    </div>
+
+    <script type="module">
+        const processBtn = document.getElementById('process-btn');
+        const evolutionText = document.getElementById('evolution-text');
+        const resultSection = document.getElementById('result-section');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const reportOutput = document.getElementById('report-output');
+        const downloadSection = document.getElementById('download-section');
+        const downloadBtn = document.getElementById('download-btn');
+        const errorMessage = document.getElementById('error-message');
+
+        let generatedMarkdown = '';
+
+        processBtn.addEventListener('click', async () => {
+            const inputText = evolutionText.value.trim();
+            if (!inputText) {
+                alert('Por favor, insira a evolução do paciente.');
+                return;
+            }
+
+            // Reset UI
+            resultSection.classList.remove('hidden');
+            loadingIndicator.classList.remove('hidden');
+            reportOutput.innerHTML = '';
+            downloadSection.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            generatedMarkdown = '';
+
+
+            try {
+                const report = await callGeminiAPI(inputText);
+                generatedMarkdown = report;
+                reportOutput.innerHTML = marked.parse(report);
+                downloadSection.classList.remove('hidden');
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                errorMessage.textContent = 'Ocorreu um erro ao processar a solicitação. Por favor, tente novamente. Detalhes: ' + error.message;
+                errorMessage.classList.remove('hidden');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        });
+
+        downloadBtn.addEventListener('click', () => {
+             if (!generatedMarkdown) return;
+
+            const patientNameMatch = generatedMarkdown.match(/\*\*Paciente:\*\* \[?(.*?),/);
+            const patientName = patientNameMatch ? patientNameMatch[1].trim().replace(/\s+/g, '_') : 'paciente';
+            const date = new Date().toISOString().slice(0, 10);
+            const filename = `passagem_de_caso_${patientName}_${date}.html`;
+            
+            const htmlContent = createHtmlForDownload(generatedMarkdown);
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+        
+        async function callGeminiAPI(text) {
+            const apiKey = ""; // API Key will be handled by the environment
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            const systemPrompt = `Você é um assistente de saúde especialista em processar e organizar informações clínicas. Sua tarefa é extrair e estruturar dados de uma nota de evolução de paciente em um formato de passagem de caso padronizado, garantindo que NENHUMA informação seja perdida. Responda em Markdown. A data e hora da passagem de caso deve ser a data e hora atuais. Se uma informação para um campo específico não estiver presente no texto fornecido, preencha com "[Não informado]".`;
+
+            const userPrompt = `
+                Por favor, processe a seguinte nota de evolução e estruture-a no formato de "PASSAGEM DE CASO". Preencha todas as seções do modelo com as informações fornecidas no texto. 
+
+                **Modelo de Passagem de Caso:**
+                ## **PASSAGEM DE CASO - [INSERIR DATA E HORA ATUAIS]**
+                ---
+                ### **1. Identificação e Alertas de Segurança**
+                * **Paciente:** [Nome completo, Idade]
+                * **Leito:** [Número do leito]
+                * **Médico(a) Responsável:** [Nome do(a) médico(a)]
+                * **Data de Admissão:** [DD/MM/AAAA]
+                * **Alergias:** [Descrever TODAS as alergias de forma visível]
+                * **Código de Reanimação:** [Ex: Reanimação completa, Ordem de Não Reanimar]
+                * **Precauções/Isolamento:** [Ex: Contato, aerossóis, padrão]
+                ---
+                ### **2. Resumo Clínico e Motivo da Internação**
+                * **Diagnóstico Principal:** [Diagnóstico que motivou a internação]
+                * **Diagnósticos Secundários / Comorbidades:** [Listar outras condições ativas e histórico médico relevante: HAS, DM, DPOC, etc.]
+                * **Breve História da Doença Atual (HPMA):** [Resumo conciso do que aconteceu e o levou à internação.]
+                * **Situação de Base do Paciente:** [Descrever como o paciente era antes da internação.]
+                ---
+                ### **3. Avaliação de Sistemas (Exame Físico Focado)**
+                * **Neurológico:**
+                * **Cardiovascular:**
+                * **Respiratório:**
+                * **Gastrointestinal / Nutricional:**
+                * **Geniturinário / Renal:**
+                * **Pele e Lesões:**
+                ---
+                ### **4. Dispositivos e Acessos**
+                * **Acesso Venoso Central:**
+                * **Acesso Venoso Periférico:**
+                * **Sondas e Drenos:**
+                ---
+                ### **5. Plano Terapêutico e Medicamentoso**
+                * **Antibióticos:**
+                * **Anticoagulação / Profilaxia TEV:**
+                * **Medicações SOS ou de Atenção:**
+                * **Balanço Hídrico:**
+                ---
+                ### **6. Resultados Relevantes (Últimas 24h)**
+                * **Laboratoriais:**
+                * **Exames de Imagem:**
+                * **Culturas:**
+                ---
+                ### **7. Tarefas e Cuidados Pendentes para o Turno**
+                1.  **Administrar:**
+                2.  **Coletar:**
+                3.  **Realizar:**
+                4.  **Comunicar:**
+                5.  **Monitorar:**
+                ---
+                ### **8. Plano Geral e Pendências (Administrativas/Sociais)**
+                * **Plano Terapêutico Geral:**
+                * **Pendências:**
+                * **Plano de Alta:**
+                * **Família/Acompanhante:**
+
+                **Texto da Evolução para Processar:**
+                ---
+                ${text}
+            `;
+            
+            const payload = {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error(`API request failed with status ${response.status}: ${errorBody}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.candidates && result.candidates.length > 0 && result.candidates[0].content.parts[0].text) {
+                 return result.candidates[0].content.parts[0].text;
+            } else {
+                 throw new Error("Resposta da API inválida ou vazia.");
+            }
+        }
+
+        function createHtmlForDownload(markdownContent) {
+            
+            let reportHtml = marked.parse(markdownContent);
+
+            reportHtml = reportHtml.replace(/<h2>(.*?)<\/h2>/, '<div class="main-header"><h2>$1</h2></div>');
+
+            reportHtml = reportHtml.replace(/<h3>(.*?)<\/h3>/g, (match, title) => {
+                return `<h3 class="section-title"><span>${title}</span></h3>`;
+            });
+
+            reportHtml = reportHtml.replace(/<li><strong>Alergias:<\/strong>/gi, '<li class="alert-danger"><strong>Alergias:</strong>');
+            
+            return `
+                <!DOCTYPE html>
+                <html lang="pt-BR">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Passagem de Caso</title>
+                    <style>
+                        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+                        
+                        :root {
+                            --primary-color: #3b82f6;
+                            --secondary-color: #1f2937;
+                            --background-color: #f3f4f6;
+                            --card-background: #ffffff;
+                            --text-color: #374151;
+                            --border-color: #e5e7eb;
+                            --alert-bg: #fef2f2;
+                            --alert-border: #f87171;
+                            --alert-text: #b91c1c;
+                            --alert-title-color: #d97706;
+                        }
+
+                        body {
+                            font-family: 'Inter', sans-serif;
+                            background-color: var(--background-color);
+                            margin: 0;
+                            padding: 20px;
+                            color: var(--text-color);
+                            -webkit-print-color-adjust: exact;
+                        }
+
+                        .container {
+                            max-width: 900px;
+                            margin: auto;
+                            background-color: var(--card-background);
+                            border-radius: 12px;
+                            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+                            overflow: hidden;
+                        }
+
+                        .main-header {
+                            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+                            color: white;
+                            padding: 24px 32px;
+                        }
+
+                        .main-header h2 {
+                            margin: 0;
+                            font-size: 1.5rem;
+                            font-weight: 700;
+                            text-align: center;
+                            border: none;
+                        }
+
+                        .content {
+                            padding: 16px 32px 32px 32px;
+                        }
+
+                        .section-title {
+                            font-size: 1.25rem;
+                            font-weight: 600;
+                            color: var(--secondary-color);
+                            margin-top: 2rem;
+                            margin-bottom: 1rem;
+                            padding-bottom: 0.5rem;
+                            border-bottom: 1px solid var(--border-color);
+                        }
+                        
+                        hr { display: none; }
+
+                        ul {
+                            list-style: none;
+                            padding: 0;
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                            gap: 12px;
+                        }
+
+                        li {
+                            padding: 12px 16px;
+                            margin-bottom: 0;
+                            border-radius: 8px;
+                            border: 1px solid var(--border-color);
+                            background-color: #f9fafb;
+                            font-size: 0.95rem;
+                            line-height: 1.5;
+                        }
+
+                        li strong {
+                            font-weight: 600;
+                            color: var(--secondary-color);
+                            margin-right: 8px;
+                            display: block;
+                            margin-bottom: 4px;
+                        }
+                        
+                        li.alert-danger {
+                            background-color: var(--alert-bg);
+                            border-color: var(--alert-border);
+                            color: var(--alert-text);
+                            font-weight: 500;
+                            grid-column: 1 / -1; /* Make it span full width */
+                        }
+                        
+                        li.alert-danger strong {
+                            color: var(--alert-text);
+                            font-weight: 700;
+                        }
+                        
+                        p {
+                            margin-top: 0.5rem;
+                            margin-bottom: 0.5rem;
+                        }
+
+                        @media print {
+                            body {
+                                padding: 0;
+                                background-color: #fff;
+                            }
+                            .container {
+                                box-shadow: none;
+                                border-radius: 0;
+                                border: none;
+                            }
+                            .main-header {
+                                background: #3b82f6 !important;
+                            }
+                            ul {
+                                display: block;
+                            }
+                            li {
+                                border-color: #ccc;
+                                margin-bottom: 8px;
+                            }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        ${reportHtml}
+                    </div>
+                </body>
+                </html>
+            `;
+        }
+    </script>
+
+</body>
+
+</html>
+
